@@ -1,17 +1,16 @@
 run(
-    `print "Hello World"
-print 5
-print 2 3 +
-let x = 10
-print x
+    `
+let x = 3
+let y = 6 2 x * +
+print y
 ` 
 );
 
 function run(code) {
     const tokens = tokenizer(code);
     const ast = parser(tokens);
-    console.log(ast);
-    // execute(ast);
+    console.log(ast[0].expression);
+    execute(ast);
 }
 
 function tokenizer(code) {
@@ -117,6 +116,8 @@ function parser(tokens) {
     }
     return ast;
 }
+
+// parser helpers
 function parseKeyword(tokens, index) {
     const token = tokens[index];
     switch (token.value) {
@@ -127,7 +128,7 @@ function parseKeyword(tokens, index) {
         return parseLet(tokens, index);
 
     default:
-        return none;
+        return null;
     }
 
     function parsePrint(tokens, index) {
@@ -184,7 +185,7 @@ function parseExpression(tokens, startIndex) {
 
         if (token.type === "number" || token.type === "string" || token.type === "identifier" ) {
             if (token.type === "string") {
-                token.value = token.value.replace(/"^|"$/g, "");
+                token.value = token.value.replace(/^"|"$/g, "");
             }
             
             stack.push({
@@ -240,6 +241,8 @@ function execute(ast) {
         // the "?." means, only execute this if it exists.
     }
 }
+
+// behavior functions
 function printFunction(node, context) {
     const expr = node.expression;
     if (!expr) {
@@ -270,12 +273,59 @@ function letFunction(node, context) {
 
     if (expr.type === "math") {
         value = math(expr, context);
-    } else if (expr.type === "varible") {
+    } else if (expr.type === "variable") {
         value = context[expr.value] !== undefined ?
             context[expr.value] :
             expr.value;
     } else {
-        value = expr.value;
+        value = expr.valueType === "number" ?
+            Number(expr.value) :
+            expr.value;
     }
     context[node.name] = value;
+}
+function math(expression, context) {
+    if (!expression || expression.type !== "math") {
+        return null;
+    }
+
+    const op = expression.operator;
+    const left = evaluateOperand(expression.left, context);
+    const right = evaluateOperand(expression.right, context);
+
+    switch(op) {
+    case "+":
+        return left + right;
+    case "-":
+        return left - right;
+    case "*":
+        return left * right;
+    case "/":
+        return left / right;
+    default:
+        return null;
+    }
+
+    function evaluateOperand(operand, context) {
+        if (!operand) {
+            return null;
+        }
+
+        if (operand.type === "literal") {
+            return operand.valueType === "number" ?
+                Number(operand.value) :
+                operand.value;
+        }
+
+        if (operand.type === "variable") {
+            return context[operand.value] !== undefined ?
+                context[operand.value] :
+                operand.value;
+        }
+
+        if (operand.type === "math") {
+            return math(operand, context);
+        }
+        return null;
+    }
 }
