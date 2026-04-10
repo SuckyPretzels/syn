@@ -1,4 +1,4 @@
-* Tiny interpreter for an unknown language
+* Tiny interpreter for an unnamed language
 This is an interpreter i wrote in javascript because i had a sudden realization that programming languages are just text.
 what truly makes a programming language is the interpreter. and an interpreter is just a program that takes in text and
 processes it. so i thought "i can do that". so i did!
@@ -8,9 +8,9 @@ processes it. so i thought "i can do that". so i did!
 *** Variable declaration with `make`.
 *** Printing text with `say`.
 *** Basic math: `+ - * /` (using a stack-based evaluator).
-**** It uses **postfix notation** for math expressions (`2 3 +` instead of `2 + 3`). I like how strange it looks.
+- It uses **postfix notation** for math expressions (`2 3 +` instead of `2 + 3`). I like how strange it looks.
 
-** Examples:
+** Example:
 #+begin_src
   make x = 3
   make y = 6 2 x * +
@@ -20,9 +20,9 @@ processes it. so i thought "i can do that". so i did!
 This should print `12` (6 2 x * + in postfix is the same as 6 + (2 * x))
 
 ** How to run:
-*** 1. Open `interpreter.js` in your editor.
-*** 2. Edit the code inside the `run(`...`)` call at the top.
-*** 3. Run the file with node.
+- 1. Open `interpreter.js` in your editor.
+- 2. Edit the code inside the `run(`...`)` call at the top.
+- 3. Run the file with node.
 
 #+begin_src bash
   node interpreter.js
