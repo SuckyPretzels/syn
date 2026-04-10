@@ -1,8 +1,6 @@
 run(
     `
-let x = 3
-let y = 6 2 x * +
-print y
+
 ` 
 );
 
@@ -14,7 +12,7 @@ function run(code) {
 }
 
 function tokenizer(code) {
-    const keywords = new Set(["print","let"]);
+    const keywords = new Set(["say","make"]);
     const operators = new Set(["+","-","*","/","="]);
     // this creates a new Set() object. Sets are not like arrays, they are lookup tables.
 
@@ -121,17 +119,17 @@ function parser(tokens) {
 function parseKeyword(tokens, index) {
     const token = tokens[index];
     switch (token.value) {
-    case "print":
-        return parsePrint(tokens, index);
+    case "say":
+        return parseSay(tokens, index);
 
-    case "let":
-        return parseLet(tokens, index);
+    case "make":
+        return parseMake(tokens, index);
 
     default:
         return null;
     }
 
-    function parsePrint(tokens, index) {
+    function parseSay(tokens, index) {
         if (index+1 >= tokens.length) {
             return null;
         } else {
@@ -143,14 +141,14 @@ function parseKeyword(tokens, index) {
 
             return {
                 node: {
-                    type: "print", 
+                    type: "say", 
                     expression: result.node,
                 },
                 consumed: 1 + result.consumed
             };
         }
     }
-    function parseLet(tokens, index) {
+    function parseMake(tokens, index) {
         if (index+3 >= tokens.length) {
             return null;
         } else {
@@ -167,7 +165,7 @@ function parseKeyword(tokens, index) {
             }
             return {
                 node: {
-                    type: "let",
+                    type: "make",
                     name: nameToken.value,
                     expression: result.node
                 },
@@ -232,8 +230,8 @@ function execute(ast) {
     // this is the dictionary with all the variables and their values
 
     const runtime = {
-        print: (node, context) => printFunction(node, context),
-        let: (node, context) => letFunction(node, context)
+        say: (node, context) => sayFunction(node, context),
+        make: (node, context) => makeFunction(node, context)
     };
     for (let node of ast) {
         runtime[node.type]?.(node, context);
@@ -243,7 +241,7 @@ function execute(ast) {
 }
 
 // behavior functions
-function printFunction(node, context) {
+function sayFunction(node, context) {
     const expr = node.expression;
     if (!expr) {
         return;
@@ -263,7 +261,7 @@ function printFunction(node, context) {
 
     console.log(value);
 }
-function letFunction(node, context) {
+function makeFunction(node, context) {
     const expr = node.expression;
     if (!expr) {
         return;
