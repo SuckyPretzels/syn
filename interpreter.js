@@ -7,7 +7,6 @@ run(
 function run(code) {
     const tokens = tokenizer(code);
     const ast = parser(tokens);
-    console.log(ast[0].expression);
     execute(ast);
 }
 
