@@ -1,7 +1,9 @@
-* Tiny interpreter for an unnamed language
+* Tiny interpreter for the syn language
 This is an interpreter i wrote in javascript because i had a sudden realization that programming languages are just text.
 what truly makes a programming language is the interpreter. and an interpreter is just a program that takes in text and
 processes it. so i thought "i can do that". so i did!
+
+syn stands for synonym because i want to try and make all the keywords be weird synonyms.
 
 
 ** Current features
@@ -20,10 +22,17 @@ processes it. so i thought "i can do that". so i did!
 This should print `12` (6 2 x * + in postfix is the same as 6 + (2 * x))
 
 ** How to run:
-- 1. Open `interpreter.js` in your editor.
+- 1. run synInterpreter.js with node
+- 2. pass in a a file ending in ".syn" an argument
+#+begin_src bash
+  node synInterpreter.js program.syn
+#+end_src
+
+*** Alternatively:
+- 1. Open `synInterpreter.js` in your editor.
 - 2. Edit the code inside the `run(`...`)` call at the top.
 - 3. Run the file with node.
 
 #+begin_src bash
-  node interpreter.js
+  node synInterpreter.js
 #+end_src
