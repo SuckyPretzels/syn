@@ -1,2 +1,4 @@
 *.syn
 interpreter-test.js
+*#
+*~

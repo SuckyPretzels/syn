@@ -5,7 +5,6 @@ processes it. so i thought "i can do that". so i did!
 
 syn stands for synonym because i want to try and make all the keywords be weird synonyms.
 
-
 ** Current features
 *** Variable declaration with `make`.
 *** Printing text with `say`.
