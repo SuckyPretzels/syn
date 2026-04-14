@@ -1,11 +1,6 @@
 const fs = require(`fs`);
 const errors = [];
-run(
-    `
-make x = 5
-say y
-`
-);
+run();
 
 function run(code) {
     code = findCode(code);
@@ -21,7 +16,6 @@ function run(code) {
     // console.log(JSON.stringify(ast, null, 2));
     execute(ast);
 }
-
 function findCode(input) {
     if (process.argv.length > 2) {
         const filename = process.argv[2];
@@ -42,6 +36,7 @@ function findCode(input) {
     return null;
 }
 
+// tokenizer
 function validateNumber(value) {
     if (/^-?[\d.]+$/.test(value)) {
         return true;
@@ -50,7 +45,8 @@ function validateNumber(value) {
 }
 function tokenizer(code) {
     const keywords = new Set(["say","make"]);
-    const operators = new Set(["+","-","*","/","="]);
+    const oneCharOperators = new Set(["+","-","*","/","=",]);
+    const twoCharOperators = new Set ([">","<",">=","<=","==","!="]);
     // this creates a new Set() object. Sets are not like arrays, they are lookup tables.
 
     function getType(value) {
@@ -63,8 +59,11 @@ function tokenizer(code) {
         if (/^".*"$/.test(value)) {
             return "string";
         }
-        if (operators.has(value)) {
+        if (oneCharOperators.has(value)) {
             return "operator";
+        }
+        if (value === "true" || value === "false") {
+            return "boolean";
         }
         return "identifier";
     }
@@ -79,7 +78,7 @@ function tokenizer(code) {
 
     for (let i = 0; i < code.length; i++) {
         const char = code[i];
-        const nextChar = code[i+1];
+        const nextChar = code[i + 1];
 
         if (current.length === 0 && char !== " " && char !== "\n") {
             startLine = line;
@@ -89,7 +88,9 @@ function tokenizer(code) {
         if (char === '"') {
             inQuotes = !inQuotes;
             current += char;
-        } else if ((char === " " || char === "\n" || operators.has(char)) && !inQuotes) {
+        } 
+        else if ((char === " " || char === "\n") && !inQuotes) {
+            // Push current token if we have one
             if (current.length > 0) {
                 tokens.push({
                     type: getType(current),
@@ -99,22 +100,62 @@ function tokenizer(code) {
                 });
                 current = "";
             }
+        } 
+        else if (!inQuotes) {
+            // Check for two-character operators first
+            let handled = false;
+            if (nextChar !== undefined) {
+                const twoChar = char + nextChar;
+                if (twoCharOperators.has(twoChar)) {
+                    // Push any pending token
+                    if (current.length > 0) {
+                        tokens.push({
+                            type: getType(current),
+                            value: current,
+                            line: startLine,
+                            column: startColumn
+                        });
+                        current = "";
+                    }
+                    tokens.push({
+                        type: "operator",
+                        value: twoChar,
+                        line: line,
+                        column: column
+                    });
+                    i++;           // skip the second character
+                    column++;
+                    handled = true;
+                }
+            }
 
-            if (char === "-" && getType(nextChar) === "number") {
-                current += char;
-            } else if (operators.has(char)) {
+            // If not a two-char operator, check for single-char operator
+            if (!handled && oneCharOperators.has(char)) {
+                if (current.length > 0) {
+                    tokens.push({
+                        type: getType(current),
+                        value: current,
+                        line: startLine,
+                        column: startColumn
+                    });
+                    current = "";
+                }
                 tokens.push({
-                    type: getType(char), 
+                    type: "operator",
                     value: char,
                     line: line,
                     column: column
                 });
+                handled = true;
             }
-        } else if(inQuotes && char === "\n") {
-            reportError("unterminated string", { line, column });
-            inQuotes = false;
-            current = "";
-        } else {
+
+            // If it wasn't an operator, add to current token
+            if (!handled) {
+                current += char;
+            }
+        } 
+        else {
+            // Inside quotes
             current += char;
         }
 
@@ -126,10 +167,7 @@ function tokenizer(code) {
         }
     }
 
-    if (inQuotes) {
-        reportError("unterminated string at the end of file", { line, column });
-    }
-    
+    // Push any remaining token
     if (current.length > 0) {
         tokens.push({
             type: getType(current),
@@ -138,10 +176,15 @@ function tokenizer(code) {
             column: startColumn
         });
     }
-   
+
+    if (inQuotes) {
+        reportError("unterminated string at the end of file", { line, column });
+    }
+
     return tokens;
 }
 
+// parser
 function parser(tokens) {
     const ast = [];
     let i = 0;
@@ -186,56 +229,99 @@ function parseExpression(tokens, startIndex) {
     
     while (i < tokens.length) {
         const token = tokens[i];
+        let node = {};
 
-        if (token.type === "number" || token.type === "string" || token.type === "identifier" ) {
-            if (token.type === "string") {
-                token.value = token.value.replace(/^"|"$/g, "");
-            }
-            if (token.type === "identifier" && validateNumber(token.value)) {
-                reportError(`invalid number '${token.value}'`, token);
-            }
-            
-            stack.push({
-                type: token.type === "identifier" ? "variable" : "literal",
-                value: token.value,
-                valueType: token.type,
-                line: token.line,
-                column: token.column
-            });
+        if (token.type === "keyword") break;
+
+        if (isLiteralOrVariable(token)) {
+            node = parseLiteralOrVariable(token);
+            stack.push(node);
             i++;
-        }
-        
-        else if (token.type === "operator") {
-            if (stack.length >= 2) {
-                const right = stack.pop();
-                const left = stack.pop();
-                
-                stack.push({
-                    type: "math",
-                    left: left,
-                    right: right,
-                    operator: token.value,
-                    line: token.line,
-                    column: token.column
-                });
-            } else {
-                reportError(`not enough operands for operator`, token);
-                return null;
-            }
+        } else if (token.type === "operator") {
+            node = parseOperation(stack, token);
+            stack.push(node);
             i++;
-        } 
-        
-        else if (token.type === "keyword") {
-            break;
         } else {
-            i++;
+            i++; // skip unknown token
         }
     } 
 
+    return finalizeExpression(stack, startIndex, i);
+}
+
+// expression parse helpers
+function isLiteralOrVariable(token) {
+    return token.type === "number" || 
+           token.type === "string" || 
+           token.type === "identifier" ||
+           token.type === "boolean";
+}
+function parseLiteralOrVariable(token) {
+    let value = token.value;
+    if (token.type === "string") {
+        value = token.value.replace(/^"|"$/g, "");
+        // removes quotes from the string
+    }
+    if (token.type === "identifier" && validateNumber(token.value)) {
+        reportError(`invalid number '${token.value}'`, token);
+    }
+    if (token.type === "boolean") {
+        value = (token.value === "true");
+    }
+
+
+    return {
+        type: token.type === "identifier" ? "variable" : "literal",
+        value: value,
+        valueType: token.type,
+        line: token.line,
+        column: token.column
+    };
+}
+function parseOperation(stack, token) {
+    if (stack.length >= 2) {
+        const right = stack.pop();
+        const left = stack.pop();
+        
+        return {
+            type: whichOperator(token.value) ? "math" : "comparison",
+            left: left,
+            right: right,
+            operator: token.value,
+            line: token.line,
+            column: token.column
+        };
+    } else {
+        reportError(`not enough operands for operator`, token);
+        return null;
+    }
+}
+function whichOperator(operator) {
+    if (
+        operator === "+" ||
+        operator === "-" ||
+        operator === "*" ||
+        operator === "/"
+    ) {
+        return true;
+    }
+    if (
+        operator === "==" ||
+        operator === ">"  ||
+        operator === "<"  ||
+        operator === ">=" ||
+        operator === "<=" ||
+        operator === "!="
+    ) {
+        return false;
+    }
+    return null;
+}
+function finalizeExpression(stack, startIndex, endIndex) {
     if (stack.length === 1) {
         return {
             node: stack[0],
-            consumed: i - startIndex
+            consumed: endIndex - startIndex
         };
     } else if (stack.length > 1) {
         return {
@@ -317,6 +403,7 @@ function parseMake(tokens, index) {
     }
 }
 
+// executor
 function execute(ast) {
     const context = {};
     // this is the dictionary with all the variables and their values
@@ -345,13 +432,14 @@ function say(node, context) {
 
     const parts = [];
 
-    for(let expr of node.expressions) {
+    for(const expr of node.expressions) {
         let value;
 
         if (expr.type === "math") {
             value = math(expr, context);
-        }
-        else if (expr.type === "variable") {
+        } else if (expr.type === "comparison") {
+            value = comparison(expr, context);
+        } else if (expr.type === "variable") {
             if ((expr.value in context)) {
                 value = context[expr.value];
             } else {
@@ -381,6 +469,8 @@ function make(node, context) {
 
     if (expr.type === "math") {
         value = math(expr, context);
+    } else if (expr.type === "comparison") {
+        value = comparison(expr, context);
     } else if (expr.type === "variable") {
         value = context[expr.value] !== undefined ?
             context[expr.value] :
@@ -388,7 +478,9 @@ function make(node, context) {
     } else {
         value = expr.valueType === "number" ?
             Number(expr.value) :
-            expr.value;
+            expr.valueType === "boolean" ?
+            expr.value :
+            expr.value ;
     }
     context[node.name] = value;
 }
@@ -419,34 +511,82 @@ function math(expression, context) {
         return null;
     }
 
-    function evaluateOperand(operand, context) {
-        if (!operand) {
-            return null;
-        }
-
-        if (operand.type === "literal") {
-            if (operand.valueType === "number") {
-                return Number(operand.value);
-            } else {
-                reportError(`attempting to do math with non-numbers '${operand.value}'`, operand);
-            }
-        }
-
-        if (operand.type === "variable") {
-            if (operand.value !== undefined) {
-                return context[operand.value];
-            } else {
-                reportError(`variable '${operand.value}' is undefined`, operand);
-                return null;
-            }
-        }
-
-        if (operand.type === "math") {
-            return math(operand, context);
-        }
-
+}
+function comparison(expression, context) {
+    if (!expression || expression.type !== "comparison") {
         return null;
     }
+
+    const op = expression.operator;
+    const left = evaluateOperand(expression.left, context);
+    const right = evaluateOperand(expression.right, context);
+
+    switch(op) {
+    case "==":
+        if (left === right) {
+            return true;
+        }
+        return false;
+    case ">":
+        if (left > right) {
+            return true;
+        }
+        return false;
+    case "<":
+        if (left < right) {
+            return true;
+        }
+        return false;
+    case ">=":
+        if (left >= right) {
+            return true;
+        }
+        return false;
+    case "<=":
+        if (left <= right) {
+            return true;
+        }
+        return false;
+    case "!=":
+        if (left !== right) {
+            return true;
+        }
+        return false;
+    default:
+        reportError("unknown operator", expression);
+        return null;
+    }
+}
+function evaluateOperand(operand, context) {
+    if (!operand) {
+        return null;
+    }
+
+    if (operand.type === "literal") {
+        if (operand.valueType === "number") {
+            return Number(operand.value);
+        }
+        if (operand.valueType === "boolean") {
+            return operand.value;
+        } else {
+            reportError(`attempting operation with non-numbers '${operand.value}'`, operand);
+        }
+    }
+
+    if (operand.type === "variable") {
+        if (operand.value !== undefined) {
+            return context[operand.value];
+        } else {
+            reportError(`variable '${operand.value}' is undefined`, operand);
+            return null;
+        }
+    }
+
+    if (operand.type === "math") {
+        return math(operand, context);
+    }
+
+    return null;
 }
 
 // error functions

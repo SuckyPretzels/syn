@@ -9,13 +9,16 @@ syn stands for synonym because i want to try and make all the keywords be weird 
 *** Variable declaration with `make`.
 *** Printing text with `say`.
 *** Basic math: `+ - * /` (using a stack-based evaluator).
-- It uses **postfix notation** for math expressions (`2 3 +` instead of `2 + 3`). I like how strange it looks.
+    - It uses **postfix notation** for math expressions (`2 3 +` instead of `2 + 3`). I like how strange it looks.
 *** Error reporting with line and column numbers
     - Unknown variables
     - Unterminated strings
     - Syntax errors in declarations
     - Division by zero
     - Math on non-numbers
+*** Booleans and comparisons
+**** Using >, <, >=, <=, == and !== like you would expect
+    - Remember to use postfix! (e.g. "34 35 >" this would say 'false')
 
 ** Example:
 #+begin_src
