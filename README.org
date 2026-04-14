@@ -31,7 +31,7 @@ This should print `The result is 12` (6 2 x * + in postfix is the same as 6 + (2
 
 ** How to run:
 - 1. run synInterpreter.js with node
-- 2. pass in a a file ending in ".syn" an argument
+- 2. pass in a file ending in ".syn" as an argument
 #+begin_src bash
   node synInterpreter.js program.syn
 #+end_src
