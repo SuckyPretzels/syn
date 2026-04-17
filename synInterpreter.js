@@ -1,7 +1,7 @@
 const fs = require(`fs`);
 const errors = [];
 
-run();
+run(``);
 
 function run(code) {
     code = findCode(code);
@@ -45,7 +45,7 @@ function validateNumber(value) {
     return false;
 }
 function tokenizer(code) {
-    const keywords = new Set(["say","make","if","or","then"]);
+    const keywords = new Set(["say","make","remake","if","or","then"]);
     const oneCharOperators = new Set(["+","-","*","/","=",]);
     const twoCharOperators = new Set ([">","<",">=","<=","==","!="]);
     const delimiters = new Set ([","]);
@@ -239,6 +239,9 @@ function parseKeyword(tokens, index) {
     case "say":
         return parseSay(tokens, index);
 
+    case "remake":
+        return parseRemake(tokens, index);
+
     case "make":
         return parseMake(tokens, index);
 
@@ -419,7 +422,7 @@ function parseSay(tokens, index) {
 }
 function parseMake(tokens, index) {
     if (index+3 >= tokens.length) {
-        reportError(`missing variable declaration at end of file`);
+        reportError(`missing variable declaration at end of file`, tokens[index]);
         return null;
     } else {
         const keyword = tokens[index];
@@ -435,7 +438,7 @@ function parseMake(tokens, index) {
 
         const result = parseExpression(tokens, index+3);
         if (!result) {
-            reportError("missing expression", keyword);
+            reportError("missing expression after make", keyword);
             return null;
         }
 
@@ -450,6 +453,41 @@ function parseMake(tokens, index) {
             consumed: 3 + result.consumed
         };
     }
+}
+function parseRemake(tokens, index) {
+    if (index+3 >= tokens.length) {
+        reportError(`missing variable declaration at end of file`, tokens[index]);
+        return null;
+    } else {
+        const keyword = tokens[index];
+        const nameToken = tokens[index+1];
+        const opToken = tokens[index+2];
+        
+        if (nameToken.type !== "identifier") {
+            reportError(`invalid variable name '${nameToken.value}'`, nameToken);
+        } if (opToken.value !== "=") {
+            reportError(`missing variable declaration '='`, opToken);
+        }
+
+
+        const result = parseExpression(tokens, index+3);
+        if (!result) {
+            reportError("missing expression after remake", keyword);
+            return null;
+        }
+
+        return {
+            node: {
+                type: "remake",
+                name: nameToken.value,
+                expression: result.node,
+                line: keyword.line,
+                column: keyword.column,
+            },
+            consumed: 3 + result.consumed
+        };
+    }
+    
 }
 function parseIf(tokens, index) {
     const ifToken = tokens[index];
@@ -523,6 +561,7 @@ function execute(ast) {
         say: (node, context) => say_(node, context),
         make: (node, context) => make_(node, context),
         if: (node, context) => if_(node, context, runtime),
+        remake:(node, context) => remake_(node, context),
     };
     for (let node of ast) {
         runtime[node.type]?.(node, context);
@@ -563,12 +602,7 @@ function say_(node, context) {
         } else if (expr.type === "comparison") {
             value = comparison(expr, context);
         } else if (expr.type === "variable") {
-            if ((expr.value in context)) {
-                value = context[expr.value];
-            } else {
-                reportError(`unknown variable '${expr.value}'`, expr);
-                value = null;
-            }
+            value = evaluateOperand(expr, context);
         } else {
             value = expr.value;
         }
@@ -584,9 +618,7 @@ function say_(node, context) {
 }
 function make_(node, context) {
     const expr = node.expression;
-    if (!expr) {
-        return;
-    }
+    if (!expr) return;
 
     let value;
 
@@ -595,17 +627,34 @@ function make_(node, context) {
     } else if (expr.type === "comparison") {
         value = comparison(expr, context);
     } else if (expr.type === "variable") {
-        value = context[expr.value] !== undefined ?
-            context[expr.value] :
-            expr.value;
+        value = evaluateOperand(expr, context);
     } else {
-        value = expr.valueType === "number" ?
-            Number(expr.value) :
-            expr.valueType === "boolean" ?
-            expr.value :
-            expr.value ;
+        value = expr.valueType === "number" ? Number(expr.value) :
+            expr.valueType === "boolean" ? expr.value : expr.value ;
     }
     context[node.name] = value;
+}
+function remake_(node, context) {
+    const expr = node.expression;
+    if (!expr) return;
+
+    let value;
+    if (!(node.name in context)) {
+        reportError(`variable '${node.name}' doesn't exist`, expr);
+    }
+
+    if (expr.type === "math") {
+        value = math(expr, context);
+    } else if (expr.type === "comparison") {
+        value = comparison(expr, context);
+    } else if (expr.type === "variable") {
+        value = evaluateOperand(expr, context);
+    } else {
+        value = expr.valueType === "number" ? Number(expr.value) :
+            expr.valueType === "boolean" ? expr.value : expr.value ;
+    }
+    context[node.name] = value;
+    
 }
 function if_(node, context, runtime) {
     const condition = node.condition;
@@ -723,7 +772,6 @@ function evaluateOperand(operand, context) {
         if (operand.valueType === "boolean") {
             return operand.value;
         } else {
-            reportError(`attempting operation with non-numbers '${operand.value}'`, operand);
             return null;
         }
     }
@@ -739,6 +787,9 @@ function evaluateOperand(operand, context) {
 
     if (operand.type === "math") {
         return math(operand, context);
+    }
+    if (operand.type === "comparison") {
+        return comparison(operand, context);
     }
 
     return null;
