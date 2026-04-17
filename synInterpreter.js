@@ -1,5 +1,6 @@
 const fs = require(`fs`);
 const errors = [];
+
 run();
 
 function run(code) {
@@ -44,23 +45,27 @@ function validateNumber(value) {
     return false;
 }
 function tokenizer(code) {
-    const keywords = new Set(["say","make"]);
+    const keywords = new Set(["say","make","if","or","then"]);
     const oneCharOperators = new Set(["+","-","*","/","=",]);
     const twoCharOperators = new Set ([">","<",">=","<=","==","!="]);
+    const delimiters = new Set ([","]);
     // this creates a new Set() object. Sets are not like arrays, they are lookup tables.
 
     function getType(value) {
         if (keywords.has(value)) {
             return "keyword";
         }
+        if (oneCharOperators.has(value) || twoCharOperators.has(value)) {
+            return "operator";
+        }
+        if (delimiters.has(value)) {
+            return "delimiter";
+        }
         if (/^-?\d+(\.\d+)?$/.test(value)) {
             return "number";
         }
         if (/^".*"$/.test(value)) {
             return "string";
-        }
-        if (oneCharOperators.has(value)) {
-            return "operator";
         }
         if (value === "true" || value === "false") {
             return "boolean";
@@ -118,7 +123,7 @@ function tokenizer(code) {
                         current = "";
                     }
                     tokens.push({
-                        type: "operator",
+                        type: getType(twoChar),
                         value: twoChar,
                         line: line,
                         column: column
@@ -131,6 +136,7 @@ function tokenizer(code) {
 
             // If not a two-char operator, check for single-char operator
             if (!handled && oneCharOperators.has(char)) {
+                // push current token
                 if (current.length > 0) {
                     tokens.push({
                         type: getType(current),
@@ -141,7 +147,26 @@ function tokenizer(code) {
                     current = "";
                 }
                 tokens.push({
-                    type: "operator",
+                    type: getType(char),
+                    value: char,
+                    line: line,
+                    column: column
+                });
+                handled = true;
+            }
+
+            if (!handled && delimiters.has(char)) {
+                if (current.length > 0) {
+                    tokens.push({
+                        type: getType(current),
+                        value: current,
+                        line: startLine,
+                        column: startColumn
+                    });
+                    current = "";
+                }
+                tokens.push({
+                    type: getType(char),
                     value: char,
                     line: line,
                     column: column
@@ -217,6 +242,9 @@ function parseKeyword(tokens, index) {
     case "make":
         return parseMake(tokens, index);
 
+    case "if":
+        return parseIf(tokens, index);
+
     default:
         reportError("unknown keyword", token);
         return null;
@@ -231,7 +259,7 @@ function parseExpression(tokens, startIndex) {
         const token = tokens[i];
         let node = {};
 
-        if (token.type === "keyword") break;
+        if (token.type === "keyword" || token.type === "delimiter") break;
 
         if (isLiteralOrVariable(token)) {
             node = parseLiteralOrVariable(token);
@@ -247,6 +275,37 @@ function parseExpression(tokens, startIndex) {
     } 
 
     return finalizeExpression(stack, startIndex, i);
+}
+function parseBlock(tokens, startIndex, stopAt = ["or","then"]) {
+    stopAt = stopAt;
+    const statements = [];
+    let i = startIndex;
+    let consumed = 0;
+
+    while (i < tokens.length) {
+        const token = tokens[i];
+
+        if (token.type === "keyword" && stopAt.includes(token.value)) {
+            break;
+        }
+
+        if (token.type === "keyword") {
+            const result = parseKeyword(tokens, i);
+
+            if (result && result.node) {
+                statements.push(result.node);
+                consumed += result.consumed;
+                i += result.consumed;
+                continue;
+            }
+        }
+        i++; // if can't parse or not a keyword, skip
+        consumed++;
+    }
+    return {
+        statements: statements,
+        consumed: consumed,
+    };
 }
 
 // expression parse helpers
@@ -297,22 +356,12 @@ function parseOperation(stack, token) {
     }
 }
 function whichOperator(operator) {
-    if (
-        operator === "+" ||
-        operator === "-" ||
-        operator === "*" ||
-        operator === "/"
-    ) {
+    const comparisonOp = new Set(["==", ">", "<", ">=", "<=", "!="]);
+    const mathOp = new Set(["+", "-", "*", "/"]);
+    if (mathOp.has(operator)) {
         return true;
     }
-    if (
-        operator === "==" ||
-        operator === ">"  ||
-        operator === "<"  ||
-        operator === ">=" ||
-        operator === "<=" ||
-        operator === "!="
-    ) {
+    if (comparisonOp.has(operator)) {
         return false;
     }
     return null;
@@ -402,6 +451,68 @@ function parseMake(tokens, index) {
         };
     }
 }
+function parseIf(tokens, index) {
+    const ifToken = tokens[index];
+    let i = index + 1;
+    // 1. parse condition (everything until ',')
+    const conditionResult = parseExpression(tokens, i);
+    if (!conditionResult || !conditionResult.node) {
+        reportError(`missing condition after ${ifToken.value}`, ifToken);
+    }
+    if (conditionResult.node.type === "keyword") {
+        reportError(`invalid condition '${conditionResult.node.value}'`, tokens[i]);
+    }
+
+    const condition = conditionResult.node;
+    i += conditionResult.consumed;
+
+    // 2. expect comma
+    if (i >= tokens.length || tokens[i].type !== "delimiter") {
+        reportError(`Expected ',' after if condtion`, ifToken);
+    }
+    i++;
+    // 3. parse thenBranch
+    const thenResult = parseBlock(tokens, i);
+    i += thenResult.consumed;
+
+    // 4. parse elseBranch
+    let elseBranch = null;
+    if (i < tokens.length && tokens[i].value === "or") {
+        i++; 
+
+        // handling or if
+        var orif = false;
+        if(tokens[i].value === "if") {
+            orif = true;
+            const elseResult = parseBlock(tokens, i);
+            elseBranch = elseResult.statements;
+            i += elseResult.consumed;
+        } else {
+            orif = false;
+            const elseResult = parseBlock(tokens, i, ["then"]);
+            elseBranch = elseResult.statements;
+            i += elseResult.consumed;
+        }
+    }
+
+    // 5. expect 'then'
+    if ((i >= tokens.length || tokens[i].value !== "then") && orif === false) {
+        reportError(`missing 'then' at the end of if statement`, ifToken);
+    }
+    i++;
+
+    return {
+        node: {
+            type: "if",
+            condition: condition,
+            thenBranch: thenResult.statements,
+            elseBranch: elseBranch,
+            line: ifToken.line,
+            column: ifToken.column
+        },
+        consumed: i - index
+    };
+}
 
 // executor
 function execute(ast) {
@@ -409,23 +520,35 @@ function execute(ast) {
     // this is the dictionary with all the variables and their values
 
     const runtime = {
-        say: (node, context) => say(node, context),
-        make: (node, context) => make(node, context)
+        say: (node, context) => say_(node, context),
+        make: (node, context) => make_(node, context),
+        if: (node, context) => if_(node, context, runtime),
     };
     for (let node of ast) {
         runtime[node.type]?.(node, context);
         // square brackets allow me to reference a variable when trying to pull a value from an object.
         // the "?." means, only execute this if it exists.
-        if (errors.length > 0) {
-            displayErrors(errors);
-            return;
-        }
     }
-    displayErrors(errors);
+    if (errors.length > 0) {
+        displayErrors(errors);
+    }
+}
+function executeBranch(branch, context, runtime) {
+    if (!branch || branch.length === 0) {
+        return;
+    }
+    
+    for (const statement of branch) {
+        runtime[statement.type]?.(statement, context);
+        
+    }
+    if (errors.length > 0) {
+        displayErrors(errors);
+    }
 }
 
-// behavior functions
-function say(node, context) {
+// keyword functions
+function say_(node, context) {
     if (!node.expressions || node.expressions.length === 0) {
         return;
     }
@@ -459,7 +582,7 @@ function say(node, context) {
         console.log(parts.join(""));
     }
 }
-function make(node, context) {
+function make_(node, context) {
     const expr = node.expression;
     if (!expr) {
         return;
@@ -484,6 +607,28 @@ function make(node, context) {
     }
     context[node.name] = value;
 }
+function if_(node, context, runtime) {
+    const condition = node.condition;
+    const thenBranch = node.thenBranch;
+    const elseBranch = node.elseBranch;
+    if (!condition) {
+        reportError(`if statement missing condition`, node);
+    }
+
+    const result = evaluateCondition(condition, context);
+
+    if (result !== true && result !== false) {
+        reportError(`result of comparison is not a boolean, somehow`, condition);
+    }
+    
+    if (result === true) {
+        executeBranch(thenBranch, context, runtime);
+    } else if (elseBranch != null) {
+        executeBranch(elseBranch, context, runtime);
+    }
+}
+
+// behavior functions
 function math(expression, context) {
     if (!expression || expression.type !== "math") {
         return null;
@@ -492,6 +637,9 @@ function math(expression, context) {
     const op = expression.operator;
     const left = evaluateOperand(expression.left, context);
     const right = evaluateOperand(expression.right, context);
+    if (right === null || left === null) {
+        return null;
+    }
 
     switch(op) {
     case "+":
@@ -520,6 +668,9 @@ function comparison(expression, context) {
     const op = expression.operator;
     const left = evaluateOperand(expression.left, context);
     const right = evaluateOperand(expression.right, context);
+    if (right === null || left === null) {
+        return null;
+    }
 
     switch(op) {
     case "==":
@@ -566,19 +717,23 @@ function evaluateOperand(operand, context) {
         if (operand.valueType === "number") {
             return Number(operand.value);
         }
+        if (operand.valueType === "string") {
+            return String(operand.value);
+        }
         if (operand.valueType === "boolean") {
             return operand.value;
         } else {
             reportError(`attempting operation with non-numbers '${operand.value}'`, operand);
+            return null;
         }
     }
 
     if (operand.type === "variable") {
-        if (operand.value !== undefined) {
+        const varName = operand.value;
+        if (varName in context) {
             return context[operand.value];
         } else {
             reportError(`variable '${operand.value}' is undefined`, operand);
-            return null;
         }
     }
 
@@ -587,6 +742,18 @@ function evaluateOperand(operand, context) {
     }
 
     return null;
+}
+function evaluateCondition(expression, context) {
+    let value;
+    if (!expression.operator) {
+        value = evaluateOperand(expression, context);
+    } else {
+        value = whichOperator(expression.operator) ?
+            math(expression, context) :
+            comparison(expression, context);
+    }
+
+    return Boolean(value);
 }
 
 // error functions

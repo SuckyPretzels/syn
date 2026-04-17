@@ -1,4 +1,6 @@
+*.js
 *.syn
-interpreter-test.js
-*#
+*.txt
 *~
+*#
+!synInterpreter.js

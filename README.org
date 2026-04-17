@@ -10,17 +10,8 @@ syn stands for synonym because i want to try and make all the keywords be weird 
 *** Printing text with `say`.
 *** Basic math: `+ - * /` (using a stack-based evaluator).
     - It uses **postfix notation** for math expressions (`2 3 +` instead of `2 + 3`). I like how strange it looks.
-*** Error reporting with line and column numbers
-    - Unknown variables
-    - Unterminated strings
-    - Syntax errors in declarations
-    - Division by zero
-    - Math on non-numbers
-*** Booleans and comparisons
-**** Using >, <, >=, <=, == and !== like you would expect
-    - Remember to use postfix! (e.g. "34 35 >" this would say 'false')
 
-** Example:
+**** Example:
 #+begin_src
 make x = 3
 make y = 6 2 x * +
@@ -28,6 +19,26 @@ say "The result is " y
 #+end_src
 
 This should print `The result is 12` (6 2 x * + in postfix is the same as 6 + (2 * x))
+
+*** Error reporting with line and column numbers
+    - Unknown variables
+    - Unterminated strings
+    - Syntax errors in declarations
+    - Division by zero
+*** Booleans and comparisons
+**** Using >, <, >=, <=, == and !== like you would expect
+    - Remember to use postfix! (e.g. "34 35 >" this would say 'false')
+*** if statements with 'if...,';'or' and 'then'
+
+**** Example
+#+begin_src
+make x = 10
+if x 5 >,
+say "big number"
+or if x 5 <,
+say "small number"
+then
+#+end_src
 
 ** How to run:
 - 1. run synInterpreter.js with node
